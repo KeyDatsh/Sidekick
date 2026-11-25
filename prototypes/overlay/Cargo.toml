@@ -1,0 +1,21 @@
+[package]
+name = "overlay"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Stage 0 prototype: transparent click-through window hidden from screen capture"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-global-shortcut = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Storage_Xps",
+] }

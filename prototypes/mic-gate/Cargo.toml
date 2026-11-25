@@ -1,0 +1,14 @@
+[package]
+name = "mic-gate"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Stage 0 prototype: real microphone -> virtual microphone with hold-to-mute"
+
+[dependencies]
+cpal = "0.17"
+rtrb = "0.3"
+hound = "3.5"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_UI_Input_KeyboardAndMouse"] }

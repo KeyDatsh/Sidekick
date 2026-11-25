@@ -1,0 +1,10 @@
+/target/
+**/gen/schemas/
+.idea/
+# Local models, binaries, recordings and Python envs for stage 0 measurements
+/prototypes/*/models/
+/prototypes/*/bin/
+/prototypes/*/audio/
+.venv/
+__pycache__/
+*.log

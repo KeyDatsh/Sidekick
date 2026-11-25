@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Мітинг: субтитри і пауза</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#60cdff}a:hover{color:#99ebff}
+</style>
+</helmet>
+<div style="width: 640px; height: 400px; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 10px; border-radius: 8px; background: rgba(32,32,32,0.96); border: 1px solid rgba(255,255,255,0.10); font-family: 'Segoe UI Variable', 'Segoe UI', Inter, sans-serif; color: #ffffff;">
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <span style="width: 8px; height: 8px; border-radius: 4px; background: #6ccb5f;"></span>
+    <span style="font-size: 13px; font-weight: 600;">Weekly sync · Zoom</span>
+    <span style="font-size: 12px; color: #c5c5c5;">EN → UA</span>
+    <span style="flex-grow: 1;"></span>
+    <span style="font-size: 12px; color: #c5c5c5;">23:14</span>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 10px; flex-grow: 1; overflow: hidden;">
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 11px; color: #8a8d94;">Mark · Could you share an update on the login fix?</span>
+      <span style="font-size: 14px; color: #c5c5c5;">Марк · Можеш розповісти, що з виправленням входу?</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 11px; color: #8a8d94;">Mark · And when do you think it will be ready for testing?</span>
+      <span style="font-size: 15px; color: #ffffff;">Марк · І коли, на твою думку, воно буде готове до тестування?</span>
+    </div>
+  </div>
+  <sc-if value="{{paused}}" hint-placeholder-val="{{ true }}">
+    <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 8px; background: rgba(247,166,74,0.14); border: 1px solid rgba(247,166,74,0.55);">
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #f7a64a; font-weight: 600;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f7a64a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2l20 20M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V5a3 3 0 0 0-5.9-.7M19 10v2a7 7 0 0 1-.6 2.8M5 10v2a7 7 0 0 0 12 5M12 19v3"></path></svg>
+        Пауза: тебе чує тільки асистент
+      </div>
+      <span style="font-size: 12px; color: #c5c5c5;">Як сказати, що буде готово до тестування в четвер, якщо рев'ю пройде без зауважень?</span>
+      <span style="font-size: 20px; line-height: 1.3; font-weight: 600; color: #ffffff;">It should be ready for testing on Thursday if the review goes smoothly.</span>
+    </div>
+  </sc-if>
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <button style="font: inherit; font-size: 13px; font-weight: 600; color: #1f1300; background: #f7a64a; border: 0; border-radius: 6px; padding: 8px 14px;">{{pauseLabel}}</button>
+    <span style="font-size: 11px; color: #c5c5c5;">{{pauseHint}}</span>
+    <span style="flex-grow: 1;"></span>
+    <button style="font: inherit; font-size: 13px; color: #ffffff; background: rgba(255,255,255,0.08); border: 0; border-radius: 6px; padding: 8px 12px;">Історія</button>
+    <button style="font: inherit; font-size: 13px; color: #ffffff; background: rgba(255,255,255,0.08); border: 0; border-radius: 6px; padding: 8px 12px;">Завершити</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"paused":{"editor":"boolean","default":true},"$preview":{"width":640,"height":400}}'>
+class Component extends DCLogic {
+renderVals() {
+const paused = this.props.paused ?? true;
+return { paused, pauseLabel: paused ? 'Пауза тримається' : 'Пауза', pauseHint: paused ? 'Відпусти Ctrl + Alt + P, щоб говорити в дзвінок' : 'Тримай Ctrl + Alt + P' };
+}
+}
+</script>
+</body>
+</html>

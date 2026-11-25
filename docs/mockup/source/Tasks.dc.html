@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Задачі по днях</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#60cdff}a:hover{color:#99ebff}
+</style>
+</helmet>
+<div style="width: 640px; height: 400px; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 12px; border-radius: 8px; background: rgba(32,32,32,0.96); border: 1px solid rgba(255,255,255,0.10); font-family: 'Segoe UI Variable', 'Segoe UI', Inter, sans-serif; color: #ffffff;">
+  <div style="display: flex; align-items: center; gap: 4px;">
+    <button style="font: inherit; font-size: 13px; font-weight: 600; color: #ffffff; background: rgba(255,255,255,0.08); border: 0; border-radius: 6px; padding: 6px 12px;">Задачі</button>
+    <button style="font: inherit; font-size: 13px; color: #c5c5c5; background: transparent; border: 0; border-radius: 6px; padding: 6px 12px;">Мітинг</button>
+    <button style="font: inherit; font-size: 13px; color: #c5c5c5; background: transparent; border: 0; border-radius: 6px; padding: 6px 12px;">Звіт</button>
+    <span style="flex-grow: 1;"></span>
+    <button aria-label="Налаштування" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c5c5c5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.8-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.8H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.8-1.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.8 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.8H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg></button>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px;">
+    <div style="padding: 6px 8px; border-radius: 6px; background: #60cdff; color: #002a3a; font-size: 12px; font-weight: 600; text-align: center;">Ср 25 · 7</div>
+    <div style="padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); color: #c5c5c5; font-size: 12px; text-align: center;">Чт 26 · 4</div>
+    <div style="padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); color: #c5c5c5; font-size: 12px; text-align: center;">Пт 27 · 2</div>
+    <div style="padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); color: #c5c5c5; font-size: 12px; text-align: center;">Пн 1 · 0</div>
+    <div style="padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); color: #c5c5c5; font-size: 12px; text-align: center;">Пізніше · 5</div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+    <sc-for list="{{tasks}}" as="t" hint-placeholder-count="5">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,0.03);">
+        <sc-if value="{{t.done}}" hint-placeholder-val="{{ false }}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60cdff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M8 12l3 3 5-6"></path></svg>
+        </sc-if>
+        <sc-if value="{{t.open}}" hint-placeholder-val="{{ true }}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a8d94" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle></svg>
+        </sc-if>
+        <span style="flex-grow: 1; font-size: 13px; color: {{t.color}};">{{t.title}}</span>
+        <span style="font-size: 11px; color: #c5c5c5; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,0.06);">{{t.client}}</span>
+        <span style="font-size: 11px; color: #8a8d94;">{{t.note}}</span>
+      </div>
+    </sc-for>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.10); font-size: 13px; color: #9a9da5;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9a9da5" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+    <span style="flex-grow: 1;">Нова задача… наприклад «завтра о 10 написати Олегу»</span>
+    <span style="font-size: 11px;">Ctrl + Shift + V з буфера</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":640,"height":400}}'>
+class Component extends DCLogic {
+renderVals() {
+const t = (title, client, done, note) => ({ title, client, done, open: !done, note: note || '', color: done ? '#8a8d94' : '#ffffff' });
+return { tasks: [
+t('Оновити API для мобільного входу', 'Клієнт A', true),
+t('Код-рев’ю PR з оплатами', 'Клієнт B', true),
+t('Виправити вхід у мобільному застосунку', 'Клієнт A', false),
+t('Відповісти на питання по дизайну', 'Клієнт C', false, 'з учора'),
+t('Підготувати демо до п’ятниці', 'Клієнт B', false)
+] };
+}
+}
+</script>
+</body>
+</html>

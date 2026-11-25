@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Швидкий таск з буфера</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#60cdff}a:hover{color:#99ebff}
+</style>
+</helmet>
+<div style="width: 640px; height: 400px; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 12px; border-radius: 8px; background: rgba(32,32,32,0.96); border: 1px solid rgba(255,255,255,0.10); font-family: 'Segoe UI Variable', 'Segoe UI', Inter, sans-serif; color: #ffffff;">
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60cdff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>
+    <span style="font-size: 14px; font-weight: 600;">Нова задача з буфера обміну</span>
+  </div>
+  <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #c5c5c5;">Заголовок
+    <input value="Додати експорт у CSV на сторінці звітів" style="font: inherit; font-size: 13px; color: #ffffff; background: rgba(255,255,255,0.06); border: 0; border-bottom: 2px solid #60cdff; border-radius: 4px; padding: 8px 10px;">
+  </label>
+  <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #c5c5c5;">Текст із повідомлення
+    <textarea style="font: inherit; font-size: 12px; line-height: 1.4; color: #c5c5c5; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; padding: 8px 10px; height: 52px; resize: none;">Привіт! Можеш додати експорт у CSV на сторінці звітів? Бажано до кінця тижня, клієнт просив.</textarea>
+  </label>
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+    <span style="font-size: 12px; color: #c5c5c5;">Проєкт / замовник</span>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+      <button style="font: inherit; font-size: 12px; font-weight: 600; color: #002a3a; background: #60cdff; border: 0; border-radius: 14px; padding: 6px 12px;">Клієнт B · Dashboard</button>
+      <button style="font: inherit; font-size: 12px; color: #ffffff; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10); border-radius: 14px; padding: 6px 12px;">Клієнт A · Mobile</button>
+      <button style="font: inherit; font-size: 12px; color: #ffffff; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10); border-radius: 14px; padding: 6px 12px;">Клієнт C · Landing</button>
+      <button style="font: inherit; font-size: 12px; color: #c5c5c5; background: transparent; border: 1px dashed rgba(255,255,255,0.20); border-radius: 14px; padding: 6px 12px;">+ Новий</button>
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 6px;">
+    <span style="font-size: 12px; color: #c5c5c5; margin-right: 4px;">День</span>
+    <button style="font: inherit; font-size: 12px; color: #ffffff; background: rgba(255,255,255,0.12); border: 0; border-radius: 6px; padding: 6px 10px;">Сьогодні</button>
+    <button style="font: inherit; font-size: 12px; color: #c5c5c5; background: transparent; border: 0; border-radius: 6px; padding: 6px 10px;">Завтра</button>
+    <button style="font: inherit; font-size: 12px; color: #c5c5c5; background: transparent; border: 0; border-radius: 6px; padding: 6px 10px;">Пт 27</button>
+    <span style="flex-grow: 1;"></span>
+    <button style="font: inherit; font-size: 13px; color: #c5c5c5; background: transparent; border: 0; border-radius: 6px; padding: 8px 12px;">Esc</button>
+    <button style="font: inherit; font-size: 13px; font-weight: 600; color: #002a3a; background: #60cdff; border: 0; border-radius: 6px; padding: 8px 16px;">Створити · Enter</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":640,"height":400}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

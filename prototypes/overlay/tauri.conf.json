@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "sidekick-overlay-prototype",
+  "version": "0.0.0",
+  "identifier": "dev.sidekick.prototype.overlay",
+  "build": { "frontendDist": "ui" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" }
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.ico"] }
+}

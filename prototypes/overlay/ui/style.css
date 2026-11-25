@@ -1,0 +1,21 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { font: 13px 'Segoe UI Variable', 'Segoe UI', sans-serif; color: #fff; }
+.panel { height: 100%; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+  border-radius: 8px; border: 1px solid rgba(255,255,255,.1); background: rgba(32,32,32,.62); }
+.active .panel { background: rgba(32,32,32,.94); border-color: #60cdff; }
+header { display: flex; justify-content: space-between; }
+small, footer, #state { color: #c5c5c5; font-size: 11px; }
+.task, .meeting { display: flex; gap: 8px; align-items: center; }
+.task span, .meeting span { flex: 1; }
+.task i { width: 8px; height: 8px; border-radius: 4px; background: #60cdff; }
+.meeting { padding: 8px 10px; border-radius: 6px; background: rgba(96,205,255,.12); font-size: 12px; }
+.meeting b { color: #60cdff; }
+input { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.1);
+  background: rgba(0,0,0,.25); color: #fff; font: inherit; }
+body:not(.active) input { display: none; }
+footer { margin-top: auto; }
+.marker .panel { visibility: hidden; }
+/* Animated: window capture only delivers frames when the content changes. */
+@keyframes pulse { from { background: #ff00ff; } to { background: #f000f0; } }
+.marker { animation: pulse 1s infinite alternate; }

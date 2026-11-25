@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Неактивний стан</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#60cdff}a:hover{color:#99ebff}
+</style>
+</helmet>
+<div style="width: 960px; height: 560px; box-sizing: border-box; position: relative; overflow: hidden; background: #1b1d22; font-family: 'Segoe UI Variable', 'Segoe UI', Inter, sans-serif; color: #ffffff;">
+  <div style="position: absolute; left: 40px; top: 32px; width: 640px; height: 440px; box-sizing: border-box; border-radius: 8px; background: #26282e; border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column;">
+    <div style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 12px; color: #9a9da5;">Будь-яка програма, в якій ти працюєш</div>
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="height: 10px; width: 62%; border-radius: 4px; background: #33363d;"></div>
+      <div style="height: 10px; width: 80%; border-radius: 4px; background: #33363d;"></div>
+      <div style="height: 10px; width: 48%; border-radius: 4px; background: #33363d;"></div>
+      <div style="height: 10px; width: 72%; border-radius: 4px; background: #33363d;"></div>
+      <div style="height: 10px; width: 56%; border-radius: 4px; background: #33363d;"></div>
+      <div style="height: 10px; width: 66%; border-radius: 4px; background: #33363d;"></div>
+    </div>
+  </div>
+  <div style="position: absolute; right: 24px; bottom: 24px; width: 340px; box-sizing: border-box; padding: 14px 16px; border-radius: 8px; background: rgba(32,32,32,{{opacity}}); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.10); display: flex; flex-direction: column; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span style="font-size: 13px; font-weight: 600;">Сьогодні · 3 з 7 готово</span>
+      <span style="font-size: 11px; color: #c5c5c5;">ср, 25 лист.</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+      <span style="width: 8px; height: 8px; border-radius: 4px; background: #60cdff; flex-shrink: 0;"></span>
+      <span style="flex-grow: 1;">Виправити вхід у мобільному застосунку</span>
+      <span style="font-size: 11px; color: #c5c5c5;">Клієнт A</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; background: rgba(96,205,255,0.12); font-size: 12px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60cdff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 11h18"></path></svg>
+      <span style="flex-grow: 1;">Мітинг «Weekly sync» о 14:00</span>
+      <span style="color: #60cdff; font-weight: 600;">через 12 хв</span>
+    </div>
+    <div style="font-size: 11px; color: #c5c5c5;">Ctrl + Alt + Space, щоб активувати. Мишка проходить крізь вікно.</div>
+  </div>
+  <div style="position: absolute; right: 24px; top: 24px; display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,0.06); font-size: 11px; color: #c5c5c5;">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#c5c5c5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2l20 20M10.6 5.1A10 10 0 0 1 22 12a13 13 0 0 1-3 4M6.6 6.6A13 13 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"></path></svg>
+    Вікно не видно при демонстрації екрана
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"opacity":{"editor":"range","default":0.62,"min":0.3,"max":1,"step":0.02},"$preview":{"width":960,"height":560}}'>
+class Component extends DCLogic {
+renderVals() {
+return { opacity: this.props.opacity ?? 0.62 };
+}
+}
+</script>
+</body>
+</html>
