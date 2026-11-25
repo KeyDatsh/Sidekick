@@ -13,7 +13,11 @@ use std::{
 use chrono::{Local, NaiveDate};
 use db::{draft_from_text, iso, DayTab, Db, Project, ReportRow, Task};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Manager, State,
+};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 /// Error text shown to the user.
@@ -333,6 +337,31 @@ fn on_hotkey(handle: &AppHandle, pressed: &Shortcut) {
     }
 }
 
+/// The window has no taskbar button: this is the visible way to open it and to quit.
+fn create_tray(handle: &AppHandle) -> tauri::Result<()> {
+    let open = MenuItem::with_id(handle, "open", "Відкрити", true, None::<&str>)?;
+    let quit = MenuItem::with_id(handle, "quit", "Вийти", true, None::<&str>)?;
+    let mut tray = TrayIconBuilder::with_id("main")
+        .tooltip("Sidekick")
+        .menu(&Menu::with_items(handle, &[&open, &quit])?)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|handle, event| match event.id().as_ref() {
+            "open" => window::set_active(handle, true, None),
+            "quit" => handle.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                window::set_active(tray.app_handle(), true, None);
+            }
+        });
+    if let Some(icon) = handle.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(handle)?;
+    Ok(())
+}
+
 fn data_dir(handle: &AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let dir = match std::env::var_os("SIDEKICK_DATA_DIR") {
         Some(dir) => PathBuf::from(dir),
@@ -367,6 +396,7 @@ fn main() {
             let settings = Settings::load(&db);
             app.manage(App { db: Mutex::new(db), hotkeys: Mutex::new(None), window: Default::default() });
             window::create(handle)?;
+            create_tray(handle)?;
             if let Err(e) = settings.hotkeys().and_then(|k| set_hotkeys(handle, k)) {
                 // Without a hotkey the window could never be activated: open it so the user can pick another one.
                 eprintln!("{e}");
