@@ -1,10 +1,10 @@
 //! Stage 0 prototype: whisper-rs (CUDA) and ct2rs in one process, as the app will use them.
 //!
-//!   speech-rs <uk|en> <whisper model> <Opus-MT dir> <folder with 16 kHz wav files> [count]
+//!   speech-rs <uk|en> <whisper model> <Opus-MT dir> <folder with 16 kHz wav files> [count] [cpu]
 
 use std::{error::Error, fs, path::Path, time::Instant};
 
-use ct2rs::{tokenizers::sentencepiece::Tokenizer, Config, TranslationOptions, Translator};
+use ct2rs::{tokenizers::sentencepiece::Tokenizer, ComputeType, Config, Device, TranslationOptions, Translator};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 type Res<T> = Result<T, Box<dyn Error>>;
@@ -33,7 +33,7 @@ fn summary(label: &str, mut ms: Vec<f64>) {
 fn main() -> Res<()> {
     let args: Vec<String> = std::env::args().collect();
     let [_, lang, model, mt_dir, wavs, rest @ ..] = args.as_slice() else {
-        return Err("usage: speech-rs <uk|en> <whisper model> <Opus-MT dir> <wav folder> [count]".into());
+        return Err("usage: speech-rs <uk|en> <whisper model> <Opus-MT dir> <wav folder> [count] [cpu]".into());
     };
     let count: usize = rest.first().map_or(Ok(60), |n| n.parse())?;
 
@@ -41,7 +41,11 @@ fn main() -> Res<()> {
     cparams.flash_attn(true);
     let ctx = WhisperContext::new_with_params(model, cparams)?;
     let mut state = ctx.create_state()?;
-    let config = Config { num_threads_per_replica: 4, ..Config::default() };
+    let config = if rest.get(1).is_some_and(|a| a == "cpu") {
+        Config { num_threads_per_replica: 4, ..Config::default() }
+    } else {
+        Config { device: Device::CUDA, compute_type: ComputeType::INT8_FLOAT16, ..Config::default() }
+    };
     let translator = Translator::with_tokenizer(mt_dir, Tokenizer::new(mt_dir)?, &config)?;
     let options = TranslationOptions::<String, String> { beam_size: 2, ..Default::default() };
     // Only the multi-target en-zle model needs to be told the target language.

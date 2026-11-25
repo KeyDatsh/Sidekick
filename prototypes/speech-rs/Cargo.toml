@@ -7,5 +7,5 @@ description = "Stage 0 prototype: whisper-rs (CUDA) and ct2rs linked into one Ru
 
 [dependencies]
 whisper-rs = { version = "0.16", features = ["cuda"] }
-ct2rs = { version = "0.11", default-features = false, features = ["sentencepiece", "ruy"] }
+ct2rs = { version = "0.11", default-features = false, features = ["sentencepiece", "ruy", "cuda"] }
 hound = "3.5"
