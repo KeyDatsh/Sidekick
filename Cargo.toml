@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["prototypes/overlay", "prototypes/mic-gate"]
+members = ["prototypes/overlay", "prototypes/mic-gate", "prototypes/speech-rs"]
+# speech-rs needs the CUDA Toolkit, CMake and libclang; build it explicitly with -p.
+default-members = ["prototypes/overlay", "prototypes/mic-gate"]
 
 [profile.dev]
 opt-level = 1
