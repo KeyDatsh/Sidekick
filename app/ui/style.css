@@ -1,0 +1,62 @@
+* { box-sizing: border-box; }
+:root { --accent: #60cdff; --on-accent: #002a3a; --muted: #c5c5c5; --dim: #8a8d94; --bad: #ff99a4; --opacity: .62; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { font: 13px 'Segoe UI Variable', 'Segoe UI', sans-serif; color: #fff; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { border: 0; border-radius: 6px; padding: 6px 10px; background: rgba(255,255,255,.08); cursor: pointer; }
+button:hover { background: rgba(255,255,255,.14); }
+button.ghost { background: transparent; color: var(--muted); }
+button.ghost:hover { background: rgba(255,255,255,.08); }
+button.primary { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input, textarea, select { width: 100%; padding: 7px 10px; border-radius: 4px; background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.08); }
+input:focus, textarea:focus { border-bottom-color: var(--accent); outline: 0; }
+textarea { resize: none; line-height: 1.4; }
+select option { background: #2b2b2b; }
+
+.panel { height: 100%; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.1); background: rgba(32,32,32,var(--opacity)); }
+.active .panel { background: rgba(32,32,32,.96); }
+.row { display: flex; align-items: center; gap: 8px; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.col { display: flex; flex-direction: column; gap: 4px; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.scroll::-webkit-scrollbar { width: 6px; }
+.scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 3px; }
+.muted { color: var(--muted); font-size: 11px; }
+.dim { color: var(--dim); font-size: 11px; }
+.bad { color: var(--bad); }
+.clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+h1 { margin: 0; font-size: 14px; font-weight: 600; }
+label { font-size: 12px; color: var(--muted); }
+
+.tabs button.on { background: rgba(255,255,255,.08); color: #fff; font-weight: 600; }
+.days { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.days button { font-size: 12px; color: var(--muted); padding: 6px 4px; }
+.days button.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.task { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,.03); }
+.task.done .title { color: var(--dim); text-decoration: line-through; }
+.task .title { flex: 1; min-width: 0; text-align: left; background: none; padding: 2px 0; }
+.task .acts { display: none; gap: 2px; }
+.task:hover .acts, .task:focus-within .acts { display: flex; }
+.task .acts button { padding: 2px 6px; font-size: 11px; }
+.check { width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 2px solid var(--dim); background: none; flex: none;
+  font-size: 11px; line-height: 1; }
+.check.done { border-color: var(--accent); color: var(--accent); }
+.check.started { border-color: var(--accent); border-style: dashed; }
+.chip { font-size: 11px; color: var(--muted); padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,.06); white-space: nowrap; }
+.choice { border-radius: 14px; font-size: 12px; padding: 5px 12px; }
+.choice.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 4px; background: var(--accent); flex: none; }
+.card { padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.06);
+  display: flex; flex-direction: column; gap: 6px; }
+.step { width: 24px; height: 24px; padding: 0; }
+.hours { min-width: 52px; text-align: center; font-size: 12px; }
+
+#toast { position: fixed; left: 16px; right: 16px; top: 12px; pointer-events: none; padding: 8px 12px; border-radius: 6px; background: #3a2a2d;
+  border: 1px solid var(--bad); font-size: 12px; display: none; }
+#toast.info { background: #22323a; border-color: var(--accent); }
+#toast.on { display: block; }
