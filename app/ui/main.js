@@ -6,6 +6,8 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 const ui = { active: false, view: 'tasks', day: null, reportDay: null, editing: null, draft: null, snap: null };
+// Subtitles arrive as events between refreshes; the snapshot brings back the saved ones after a reload.
+const meeting = { status: { running: false, note: '', error: false }, lines: [], partial: null };
 const root = document.getElementById('app');
 
 // Small DOM helper: h('button.primary', { onclick }, 'text', child…)
@@ -88,6 +90,10 @@ async function refresh() {
   const firstLoad = !ui.snap;
   const newDay = ui.snap && ui.snap.today !== snap.today;
   ui.snap = snap;
+  meeting.status = snap.meeting.status;
+  if (snap.meeting.lines.length >= meeting.lines.length || !meeting.status.running) {
+    meeting.lines = snap.meeting.lines.map((l) => ({ en: l.original, uk: l.translation }));
+  }
   if (firstLoad || newDay) {
     ui.day = snap.today;
     if (firstLoad && snap.active) {
@@ -104,6 +110,7 @@ function draw() {
   document.documentElement.style.setProperty('--opacity', ui.snap.settings.opacity / 100);
   const view = ui.active ? views[ui.view] : inactive;
   root.replaceChildren(...view().filter(Boolean));
+  for (const el of root.querySelectorAll('.subs')) el.scrollTop = el.scrollHeight;
   const focus = root.querySelector('[data-focus]');
   if (ui.active && focus) focus.focus();
 }
@@ -122,13 +129,33 @@ function drag(el) {
 function header() {
   const tab = (view, text) => h(`button.ghost${ui.view === view ? '.on' : ''}`, { onclick: () => go(view) }, text);
   return drag(
-    h('div.row.tabs', {}, tab('tasks', 'Задачі'), tab('report', 'Звіт'), tab('plan', 'План дня'), drag(h('span.grow')),
+    h('div.row.tabs', {}, tab('tasks', 'Задачі'), tab('report', 'Звіт'), tab('plan', 'План дня'),
+      tab('meeting', meeting.status.running ? '● Мітинг' : 'Мітинг'), drag(h('span.grow')),
       h('button.ghost', { onclick: () => go('settings'), ariaLabel: 'Налаштування', title: 'Налаштування' }, '⚙'),
       h('button.ghost', { onclick: () => invoke('deactivate'), title: 'Сховати (Esc)' }, 'Esc')),
   );
 }
 
+// Subtitle lines, newest at the bottom; the unfinished phrase in grey.
+function subtitles(limit) {
+  const lines = meeting.lines.slice(-limit).map((l) => h('div.sub', {}, h('div.uk', {}, l.uk), h('div.en', {}, l.en)));
+  const p = meeting.partial;
+  return h('div.subs', {}, lines, p && h('div.sub.partial', {}, h('div.uk', {}, p.uk), h('div.en', {}, p.en)),
+    !lines.length && !p && h('span.muted', {}, 'Чекаю, поки хтось заговорить…'));
+}
+
+function meetingNote() {
+  const s = meeting.status;
+  return s.note && h(`span.grow.clip${s.error ? '.bad' : '.muted'}`, { title: s.note }, s.note);
+}
+
 function inactive() {
+  if (meeting.status.running) {
+    return [
+      subtitles(6),
+      h('div.row', {}, meetingNote() || h('span.grow'), h('span.dim', {}, `${hotkeyLabel(ui.snap.settings.toggle_hotkey)}: керування`)),
+    ];
+  }
   const tasks = ui.snap.today_tasks;
   const open = tasks.filter((t) => !t.done);
   return [
@@ -360,6 +387,31 @@ const views = {
     ];
   },
 
+  meeting() {
+    const s = meeting.status;
+    const toggle = h(s.running ? 'button' : 'button.primary', {
+      'data-focus': '',
+      onclick: act(async () => {
+        toggle.disabled = true;
+        if (s.running) await call('stop_meeting');
+        else {
+          meeting.lines = [];
+          meeting.partial = null;
+          await call('start_meeting');
+        }
+      }),
+    }, s.running ? 'Завершити' : 'Почати мітинг');
+    return [
+      header(),
+      h('div.row', {}, h('h1', {}, 'Субтитри EN → UA'), h('span.grow'), toggle),
+      meeting.status.note && h('div.row', {}, meetingNote()),
+      s.running ? subtitles(200)
+        : h('div.col.grow', {}, h('span.muted', {},
+          'Асистент слухає звук із пристрою виводу за замовчуванням, тобто те, що кажуть інші в дзвінку, і показує переклад. ' +
+          'Субтитри видно й тоді, коли вікно неактивне. Запуск триває кілька секунд: моделі завантажуються у відеокарту.')),
+    ];
+  },
+
   settings() {
     const s = { ...ui.snap.settings };
     const save = act(async () => { await call('save_settings', { settings: s }); toast('Збережено', true); });
@@ -398,6 +450,10 @@ const views = {
         h('div.row', {}, h('label.col.grow', {}, 'Активувати вікно', hotkey('toggle_hotkey')),
           h('label.col.grow', {}, 'Задача з буфера', hotkey('quick_hotkey'))),
         h('label.col', {}, 'Непрозорість неактивного вікна', opacity),
+        h('label.col', {}, 'Папка з моделями для мітингів',
+          h('input', { value: s.models_dir, placeholder: ui.snap.meeting.default_models_dir,
+            onchange: (e) => { s.models_dir = e.target.value; save(); } }),
+          h('span.dim', {}, 'Потрібні ggml-large-v3-turbo.bin, ggml-silero-v6.2.0.bin і папка opus-mt-tc-big-en-zle.')),
         h('div.col', {}, h('label', {}, 'Ключ Claude API (зберігається у сховищі облікових даних Windows)'),
           h('div.row', {}, keyInput, h('button', { onclick: act(async () => {
             await call('set_api_key', { key: keyInput.value });
@@ -424,6 +480,24 @@ function escape() {
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') escape();
+});
+
+// Only views that show subtitles are redrawn: elsewhere a redraw would drop what is being typed.
+const showsSubtitles = () => !ui.active || ui.view === 'meeting';
+
+listen('subtitle', ({ payload }) => {
+  if (payload.type === 'partial') meeting.partial = { en: payload.en, uk: payload.uk };
+  else {
+    meeting.partial = null;
+    if (payload.en) meeting.lines.push({ en: payload.en, uk: payload.uk });
+  }
+  if (ui.snap && showsSubtitles()) draw();
+});
+
+listen('meeting_status', ({ payload }) => {
+  meeting.status = payload;
+  if (!payload.running) meeting.partial = null;
+  if (ui.snap && showsSubtitles()) draw();
 });
 
 listen('active', async ({ payload }) => {

@@ -2,6 +2,7 @@
 
 mod db;
 mod llm;
+mod meeting;
 mod window;
 
 use std::{
@@ -11,7 +12,7 @@ use std::{
 };
 
 use chrono::{Local, NaiveDate};
-use db::{draft_from_text, iso, DayTab, Db, Project, ReportRow, Task};
+use db::{draft_from_text, iso, DayTab, Db, Line, Project, ReportRow, Task};
 use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{Menu, MenuItem},
@@ -27,6 +28,8 @@ pub struct App {
     db: Mutex<Db>,
     hotkeys: Mutex<Option<Hotkeys>>,
     pub window: window::WindowState,
+    pub meeting: meeting::MeetingState,
+    data_dir: PathBuf,
 }
 
 impl App {
@@ -48,6 +51,8 @@ struct Settings {
     quick_hotkey: String,
     /// Background opacity of the inactive window, percent.
     opacity: u8,
+    /// Folder with the speech models; empty means the default, see `models_dir`.
+    models_dir: String,
 }
 
 impl Settings {
@@ -58,6 +63,7 @@ impl Settings {
             // Not the mockup's Ctrl+Shift+V: registered globally it would take "paste as plain text" from every app.
             quick_hotkey: get("quick_hotkey", "Ctrl+Alt+KeyV"),
             opacity: get("opacity", "62").parse().unwrap_or(62),
+            models_dir: get("models_dir", ""),
         }
     }
 
@@ -97,10 +103,21 @@ struct Snapshot {
     active: bool,
     hotkeys_ok: bool,
     settings: Settings,
+    meeting: MeetingView,
+}
+
+#[derive(Serialize)]
+struct MeetingView {
+    status: meeting::Status,
+    /// Finished lines of the running meeting, for a page that was reloaded mid-meeting.
+    lines: Vec<Line>,
+    default_models_dir: String,
 }
 
 #[tauri::command]
 fn snapshot(app: State<App>, day: Option<String>) -> Cmd<Snapshot> {
+    // Before the database lock: the worker's reader takes the meeting lock, then the database.
+    let (status, meeting_id) = (app.meeting.status(), app.meeting.id());
     let db = app.db();
     let now = today();
     let today = iso(now);
@@ -114,6 +131,14 @@ fn snapshot(app: State<App>, day: Option<String>) -> Cmd<Snapshot> {
         active: app.window.active.load(Relaxed),
         hotkeys_ok: app.hotkeys.lock().is_ok_and(|k| k.is_some()),
         settings: Settings::load(&db),
+        meeting: MeetingView {
+            status,
+            lines: match meeting_id {
+                Some(id) => db.lines(id, 50).map_err(err)?,
+                None => vec![],
+            },
+            default_models_dir: app.data_dir.join("models").display().to_string(),
+        },
         today,
     })
 }
@@ -246,6 +271,27 @@ fn save_minutes(app: State<App>, day: String, project: i64, minutes: i64) -> Cmd
     app.db().save_minutes(&day, project, minutes).map_err(err)
 }
 
+// Meeting
+
+/// Settings, then SIDEKICK_MODELS, then `models` in the data folder.
+fn models_dir(app: &App) -> PathBuf {
+    let saved = Settings::load(&app.db()).models_dir;
+    if !saved.trim().is_empty() {
+        return PathBuf::from(saved.trim());
+    }
+    std::env::var_os("SIDEKICK_MODELS").map(PathBuf::from).unwrap_or_else(|| app.data_dir.join("models"))
+}
+
+#[tauri::command]
+fn start_meeting(handle: AppHandle, app: State<App>) -> Cmd<()> {
+    meeting::start(&handle, models_dir(&app), app.data_dir.join("speech.log"))
+}
+
+#[tauri::command]
+fn stop_meeting(handle: AppHandle) {
+    meeting::stop(&handle);
+}
+
 // Settings
 
 /// The key lives in Windows Credential Manager, never in the database.
@@ -284,6 +330,7 @@ fn save_settings(handle: AppHandle, app: State<App>, settings: Settings) -> Cmd<
     let db = app.db();
     db.set_setting("toggle_hotkey", &settings.toggle_hotkey).map_err(err)?;
     db.set_setting("quick_hotkey", &settings.quick_hotkey).map_err(err)?;
+    db.set_setting("models_dir", settings.models_dir.trim()).map_err(err)?;
     db.set_setting("opacity", &settings.opacity.clamp(20, 100).to_string()).map_err(err)
 }
 
@@ -388,13 +435,22 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             snapshot, plan_seen, add_project, archive_project, add_task, update_task, move_task, set_done,
             set_started, delete_task, clipboard_draft, copy_text, report, generate_report, save_memo,
-            save_minutes, has_api_key, set_api_key, save_settings, deactivate, quit
+            save_minutes, has_api_key, set_api_key, save_settings, start_meeting, stop_meeting, deactivate, quit
         ])
         .setup(|app| {
             let handle = app.handle();
-            let db = Db::open(&data_dir(handle)?.join("sidekick.db"))?;
+            let data_dir = data_dir(handle)?;
+            let db = Db::open(&data_dir.join("sidekick.db"))?;
+            // Meetings a crash left open.
+            db.end_meeting(None, &Local::now().format("%Y-%m-%d %H:%M:%S").to_string())?;
             let settings = Settings::load(&db);
-            app.manage(App { db: Mutex::new(db), hotkeys: Mutex::new(None), window: Default::default() });
+            app.manage(App {
+                db: Mutex::new(db),
+                hotkeys: Mutex::new(None),
+                window: Default::default(),
+                meeting: Default::default(),
+                data_dir,
+            });
             window::create(handle)?;
             create_tray(handle)?;
             if let Err(e) = settings.hotkeys().and_then(|k| set_hotkeys(handle, k)) {

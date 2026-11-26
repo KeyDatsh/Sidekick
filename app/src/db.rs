@@ -39,6 +39,20 @@ CREATE TABLE IF NOT EXISTS report_rows (
     PRIMARY KEY (day, project_id)
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS meetings (
+    id INTEGER PRIMARY KEY,
+    started_at TEXT NOT NULL,      -- local time, YYYY-MM-DD HH:MM:SS
+    ended_at TEXT                  -- NULL while it runs (or if the app crashed)
+);
+CREATE TABLE IF NOT EXISTS meeting_lines (
+    id INTEGER PRIMARY KEY,
+    meeting_id INTEGER NOT NULL REFERENCES meetings (id),
+    at_ms INTEGER NOT NULL,        -- since the meeting started
+    speaker TEXT NOT NULL,         -- 'them' (call audio) or 'me' (pause mode); no names
+    original TEXT NOT NULL,
+    translation TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS meeting_lines_meeting ON meeting_lines (meeting_id, at_ms);
 ";
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -75,6 +89,14 @@ pub struct DayTab {
     /// None: the "later" tab.
     pub day: Option<String>,
     pub open: i64,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct Line {
+    pub at_ms: i64,
+    pub speaker: String,
+    pub original: String,
+    pub translation: String,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -318,6 +340,45 @@ impl Db {
         )?;
         Ok(())
     }
+
+    // Meetings
+
+    pub fn start_meeting(&self, now: &str) -> Res<i64> {
+        self.0.execute("INSERT INTO meetings (started_at) VALUES (?1)", [now])?;
+        Ok(self.0.last_insert_rowid())
+    }
+
+    /// With `id` None, closes every meeting left open, e.g. by a crash.
+    pub fn end_meeting(&self, id: Option<i64>, now: &str) -> Res<()> {
+        self.0.execute(
+            "UPDATE meetings SET ended_at = ?2 WHERE ended_at IS NULL AND (?1 IS NULL OR id = ?1)",
+            params![id, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn add_line(&self, meeting: i64, line: &Line) -> Res<()> {
+        self.0.execute(
+            "INSERT INTO meeting_lines (meeting_id, at_ms, speaker, original, translation) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![meeting, line.at_ms, line.speaker, line.original, line.translation],
+        )?;
+        Ok(())
+    }
+
+    /// The last `limit` lines, oldest first.
+    pub fn lines(&self, meeting: i64, limit: i64) -> Res<Vec<Line>> {
+        let mut q = self.0.prepare(
+            "SELECT at_ms, speaker, original, translation FROM
+               (SELECT * FROM meeting_lines WHERE meeting_id = ?1 ORDER BY at_ms DESC, id DESC LIMIT ?2)
+             ORDER BY at_ms, id",
+        )?;
+        let rows = q
+            .query_map(params![meeting, limit], |r| {
+                Ok(Line { at_ms: r.get(0)?, speaker: r.get(1)?, original: r.get(2)?, translation: r.get(3)? })
+            })?
+            .collect();
+        rows
+    }
 }
 
 fn project(r: &Row) -> Res<Project> {
@@ -459,6 +520,24 @@ mod tests {
         let strip = |s: &str| day_strip(day(s)).into_iter().map(iso).collect::<Vec<_>>();
         assert_eq!(strip(WED), [WED, "2026-11-26", "2026-11-27", "2026-11-30"]);
         assert_eq!(strip("2026-11-28"), ["2026-11-28", "2026-11-30", "2026-12-01", "2026-12-02"]);
+    }
+
+    #[test]
+    fn meeting_keeps_the_last_lines_in_order_and_closes() {
+        let db = db();
+        let id = db.start_meeting("2026-11-26 10:00:00").unwrap();
+        for i in 0..5 {
+            let line = Line { at_ms: i * 1000, speaker: "them".into(), original: format!("en {i}"), translation: format!("uk {i}") };
+            db.add_line(id, &line).unwrap();
+        }
+        let last: Vec<String> = db.lines(id, 2).unwrap().into_iter().map(|l| l.original).collect();
+        assert_eq!(last, ["en 3", "en 4"]);
+        db.start_meeting("2026-11-26 11:00:00").unwrap();
+        db.end_meeting(Some(id), "2026-11-26 10:30:00").unwrap();
+        db.end_meeting(None, "2026-11-26 12:00:00").unwrap();
+        let ends: Vec<String> =
+            db.0.prepare("SELECT ended_at FROM meetings ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(ends, ["2026-11-26 10:30:00", "2026-11-26 12:00:00"]);
     }
 
     #[test]

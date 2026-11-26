@@ -60,3 +60,11 @@ label { font-size: 12px; color: var(--muted); }
   border: 1px solid var(--bad); font-size: 12px; display: none; }
 #toast.info { background: #22323a; border-color: var(--accent); }
 #toast.on { display: block; }
+
+.subs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.subs > :first-child { margin-top: auto; }
+.sub .uk { font-size: 15px; line-height: 1.35; }
+.sub .en { font-size: 11px; color: var(--dim); }
+.sub.partial .uk { color: var(--muted); }
+:not(.active) > .panel .sub .uk { text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+:not(.active) > .panel .sub .en { color: var(--muted); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
