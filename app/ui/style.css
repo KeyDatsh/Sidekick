@@ -23,7 +23,7 @@ select option { background: #2b2b2b; }
 .wrap { flex-wrap: wrap; }
 .grow { flex: 1; min-width: 0; }
 .col { display: flex; flex-direction: column; gap: 4px; }
-.scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 4px; }
 .scroll::-webkit-scrollbar { width: 6px; }
 .scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 3px; }
 .muted { color: var(--muted); font-size: 11px; }
@@ -66,5 +66,8 @@ label { font-size: 12px; color: var(--muted); }
 .sub .uk { font-size: 15px; line-height: 1.35; }
 .sub .en { font-size: 11px; color: var(--dim); }
 .sub.partial .uk { color: var(--muted); }
+.sub.me .uk { color: var(--accent); }
+.card.pausing { border-color: var(--accent); }
+.card .say { font-size: 17px; line-height: 1.35; color: var(--accent); font-weight: 600; user-select: text; }
 :not(.active) > .panel .sub .uk { text-shadow: 0 1px 2px rgba(0,0,0,.6); }
 :not(.active) > .panel .sub .en { color: var(--muted); text-shadow: 0 1px 2px rgba(0,0,0,.6); }

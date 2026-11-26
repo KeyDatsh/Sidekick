@@ -8,6 +8,10 @@ const { listen } = window.__TAURI__.event;
 const ui = { active: false, view: 'tasks', day: null, reportDay: null, editing: null, draft: null, snap: null };
 // Subtitles arrive as events between refreshes; the snapshot brings back the saved ones after a reload.
 const meeting = { status: { running: false, note: '', error: false }, lines: [], partial: null };
+// Pause mode: `held` while the key is down, `partial` meanwhile, `last` the finished phrase.
+const pause = { held: false, meeting: false, partial: null, last: null };
+// The finished pause phrase stays on screen this long, so it can be read out to the call.
+const PAUSE_SHOWN_MS = 30_000;
 const root = document.getElementById('app');
 
 // Small DOM helper: h('button.primary', { onclick }, 'text', child…)
@@ -92,7 +96,9 @@ async function refresh() {
   ui.snap = snap;
   meeting.status = snap.meeting.status;
   if (snap.meeting.lines.length >= meeting.lines.length || !meeting.status.running) {
-    meeting.lines = snap.meeting.lines.map((l) => ({ en: l.original, uk: l.translation }));
+    meeting.lines = snap.meeting.lines.map((l) => (l.speaker === 'me'
+      ? { me: true, uk: l.original, en: l.translation }
+      : { uk: l.translation, en: l.original }));
   }
   if (firstLoad || newDay) {
     ui.day = snap.today;
@@ -138,10 +144,30 @@ function header() {
 
 // Subtitle lines, newest at the bottom; the unfinished phrase in grey.
 function subtitles(limit) {
-  const lines = meeting.lines.slice(-limit).map((l) => h('div.sub', {}, h('div.uk', {}, l.uk), h('div.en', {}, l.en)));
+  // Your own lines (pause mode): the English is what matters, the Ukrainian is the reminder.
+  // The newest one of them is already in the pause card while that is shown.
+  const all = pauseCard() && meeting.lines.at(-1)?.me ? meeting.lines.slice(0, -1) : meeting.lines;
+  const lines = all.slice(-limit).map((l) => (l.me
+    ? h('div.sub.me', {}, h('div.uk', {}, l.en), h('div.en', {}, `Ти: ${l.uk}`))
+    : h('div.sub', {}, h('div.uk', {}, l.uk), h('div.en', {}, l.en))));
   const p = meeting.partial;
   return h('div.subs', {}, lines, p && h('div.sub.partial', {}, h('div.uk', {}, p.uk), h('div.en', {}, p.en)),
     !lines.length && !p && h('span.muted', {}, 'Чекаю, поки хтось заговорить…'));
+}
+
+function pauseCard() {
+  if (pause.held) {
+    const p = pause.partial;
+    return h('div.card.pausing', {},
+      h('b', {}, 'Пауза: тебе чує тільки асистент'),
+      !pause.meeting && h('span.muted', {}, 'Мітинг не запущено, тож перекладу не буде. Дзвінок тебе все одно не чує.'),
+      p && h('div.say', {}, p.en), p && h('span.muted', {}, p.uk));
+  }
+  const last = pause.last;
+  if (!last || Date.now() - last.at > PAUSE_SHOWN_MS) return null;
+  return h('div.card.said', {},
+    last.en ? h('div.say', {}, last.en) : h('span.muted', {}, 'Не розчув, спробуй ще раз.'),
+    last.uk && h('span.muted', {}, last.uk));
 }
 
 function meetingNote() {
@@ -150,9 +176,10 @@ function meetingNote() {
 }
 
 function inactive() {
-  if (meeting.status.running) {
+  if (meeting.status.running || pauseCard()) {
     return [
-      subtitles(6),
+      meeting.status.running ? subtitles(pauseCard() ? 3 : 6) : h('span.grow'),
+      pauseCard(),
       h('div.row', {}, meetingNote() || h('span.grow'), h('span.dim', {}, `${hotkeyLabel(ui.snap.settings.toggle_hotkey)}: керування`)),
     ];
   }
@@ -403,12 +430,16 @@ const views = {
     }, s.running ? 'Завершити' : 'Почати мітинг');
     return [
       header(),
-      h('div.row', {}, h('h1', {}, 'Субтитри EN → UA'), h('span.grow'), toggle),
+      h('div.row', {}, h('h1', {}, 'Мітинг: субтитри EN → UA і пауза UA → EN'), h('span.grow'), toggle),
       meeting.status.note && h('div.row', {}, meetingNote()),
       s.running ? subtitles(200)
         : h('div.col.grow', {}, h('span.muted', {},
           'Асистент слухає звук із пристрою виводу за замовчуванням, тобто те, що кажуть інші в дзвінку, і показує переклад. ' +
           'Субтитри видно й тоді, коли вікно неактивне. Запуск триває кілька секунд: моделі завантажуються у відеокарту.')),
+      pauseCard(),
+      h('div.row', {}, ui.snap.meeting.gate.on
+        ? h('span.dim.grow', {}, `Тримай ${hotkeyLabel(ui.snap.settings.pause_hotkey)}: дзвінок тебе не чує, а асистент перекладає українську на англійську.`)
+        : h('span.bad.grow', {}, ui.snap.meeting.gate.note)),
     ];
   },
 
@@ -436,6 +467,18 @@ const views = {
       });
       return input;
     };
+    // Device lists come from Windows on each visit to the settings.
+    const select = (field, defaultLabel) => h('select', { onchange: (e) => { s[field] = e.target.value; save(); } },
+      h('option', { value: s[field] }, s[field] || defaultLabel));
+    const devices = { mic: select('mic_device', 'За замовчуванням'), cable: select('cable_device', 'CABLE Input') };
+    call('audio_devices').then((d) => {
+      const fill = (el, names, field, first) => el.replaceChildren(
+        ...(first ? [h('option', { value: '', selected: !s[field] }, first)] : []),
+        ...names.map((n) => h('option', { value: n, selected: s[field] && n.includes(s[field]) }, n)));
+      fill(devices.mic, d.inputs.filter((n) => !/cable/i.test(n)), 'mic_device', 'За замовчуванням');
+      fill(devices.cable, d.outputs.filter((n) => /cable/i.test(n)), 'cable_device');
+      if (!devices.cable.options.length) devices.cable.append(h('option', { value: s.cable_device }, 'VB-Cable не знайдено'));
+    }).catch(console.error);
     const keyInput = h('input', { type: 'password', placeholder: 'sk-ant-…', autocomplete: 'off' });
     const keyState = h('span.muted');
     call('has_api_key').then((yes) => (keyState.textContent = yes ? 'Ключ є.' : 'Ключа немає, звіт складатиметься з назв задач.')).catch(console.error);
@@ -453,7 +496,13 @@ const views = {
         h('label.col', {}, 'Папка з моделями для мітингів',
           h('input', { value: s.models_dir, placeholder: ui.snap.meeting.default_models_dir,
             onchange: (e) => { s.models_dir = e.target.value; save(); } }),
-          h('span.dim', {}, 'Потрібні ggml-large-v3-turbo.bin, ggml-silero-v6.2.0.bin і папка opus-mt-tc-big-en-zle.')),
+          h('span.dim', {}, 'Потрібні ggml-large-v3-turbo.bin, ggml-silero-v6.2.0.bin і папки opus-mt-tc-big-en-zle, opus-mt-tc-big-zle-en.')),
+        h('div.col', {}, h('label', {}, 'Режим паузи'),
+          h('div.row', {}, h('label.col.grow', {}, 'Тримати, щоб дзвінок не чув', hotkey('pause_hotkey')),
+            h('label.col.grow', {}, 'Мікрофон', devices.mic), h('label.col.grow', {}, 'Віртуальний кабель', devices.cable)),
+          h(ui.snap.meeting.gate.on ? 'span.dim' : 'span.bad', {}, ui.snap.meeting.gate.on
+            ? `Звук іде: ${ui.snap.meeting.gate.note}. У програмі для дзвінків вибери мікрофон «CABLE Output».`
+            : ui.snap.meeting.gate.note)),
         h('div.col', {}, h('label', {}, 'Ключ Claude API (зберігається у сховищі облікових даних Windows)'),
           h('div.row', {}, keyInput, h('button', { onclick: act(async () => {
             await call('set_api_key', { key: keyInput.value });
@@ -490,6 +539,27 @@ listen('subtitle', ({ payload }) => {
   else {
     meeting.partial = null;
     if (payload.en) meeting.lines.push({ en: payload.en, uk: payload.uk });
+  }
+  if (ui.snap && showsSubtitles()) draw();
+});
+
+listen('pause', ({ payload }) => {
+  pause.held = payload.held;
+  pause.meeting = payload.meeting;
+  if (payload.held) pause.partial = null;
+  if (ui.snap && showsSubtitles()) draw();
+});
+
+listen('said', ({ payload }) => {
+  const said = { uk: payload.uk, en: payload.en };
+  if (payload.partial) {
+    if (pause.held) pause.partial = said;
+  } else {
+    pause.partial = null;
+    pause.last = { ...said, at: Date.now() };
+    if (payload.uk) meeting.lines.push({ me: true, ...said });
+    // Hide the card once it has been on screen long enough.
+    setTimeout(() => { if (ui.snap && showsSubtitles()) draw(); }, PAUSE_SHOWN_MS + 100);
   }
   if (ui.snap && showsSubtitles()) draw();
 });

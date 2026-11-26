@@ -3,9 +3,9 @@
 
 use std::{
     fs::OpenOptions,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     path::PathBuf,
-    process::{Child, Command, Stdio},
+    process::{Child, ChildStdin, Command, Stdio},
     sync::{Mutex, MutexGuard},
 };
 
@@ -20,9 +20,11 @@ use crate::{db::Line, App};
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Msg {
     Loading,
-    Ready { device: String },
+    Ready { device: String, mic: Option<String>, mic_error: Option<String> },
     Partial { en: String, uk: String },
     Final { at_ms: i64, en: String, uk: String },
+    /// Said during a pause, Ukrainian and its English translation.
+    Said { partial: bool, at_ms: i64, uk: String, en: String },
     Error { message: String },
 }
 
@@ -42,6 +44,8 @@ pub struct MeetingState {
 #[derive(Default)]
 struct Inner {
     child: Option<Child>,
+    /// Commands to the worker: `pause_down`, `pause_up`.
+    stdin: Option<ChildStdin>,
     id: Option<i64>,
     status: Status,
 }
@@ -57,6 +61,14 @@ impl MeetingState {
 
     pub fn id(&self) -> Option<i64> {
         self.lock().id
+    }
+
+    /// Tells the worker to start or stop keeping the microphone. False: no meeting is running.
+    pub fn pause(&self, held: bool) -> bool {
+        let mut inner = self.lock();
+        let Some(stdin) = &mut inner.stdin else { return false };
+        let line: &[u8] = if held { b"pause_down\n" } else { b"pause_up\n" };
+        stdin.write_all(line).and_then(|()| stdin.flush()).is_ok()
     }
 }
 
@@ -81,7 +93,8 @@ fn worker_path() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-pub fn start(handle: &AppHandle, models: PathBuf, log: PathBuf) -> Result<(), String> {
+/// `mic`: part of the microphone's name for pause mode, empty for the default one.
+pub fn start(handle: &AppHandle, models: PathBuf, mic: &str, log: PathBuf) -> Result<(), String> {
     let app = handle.state::<App>();
     let mut inner = app.meeting.lock();
     if inner.child.is_some() {
@@ -90,7 +103,11 @@ pub fn start(handle: &AppHandle, models: PathBuf, log: PathBuf) -> Result<(), St
     let bin = worker_path()?;
     let log = OpenOptions::new().create(true).append(true).open(&log).map_err(|e| format!("{}: {e}", log.display()))?;
     let mut command = Command::new(bin);
-    command.arg("--models").arg(&models).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(log);
+    command.arg("--models").arg(&models);
+    if !mic.trim().is_empty() {
+        command.arg("--mic").arg(mic.trim());
+    }
+    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(log);
     // The worker loads cuBLAS at start; the CUDA installer sets CUDA_PATH but not always PATH.
     if let Some(cuda) = std::env::var_os("CUDA_PATH") {
         let mut paths = vec![PathBuf::from(cuda).join("bin")];
@@ -107,6 +124,7 @@ pub fn start(handle: &AppHandle, models: PathBuf, log: PathBuf) -> Result<(), St
     }
     let mut child = command.spawn().map_err(|e| format!("Не вдалося запустити розпізнавання: {e}"))?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
+    inner.stdin = child.stdin.take();
     let id = app.db().start_meeting(&now()).map_err(|e| e.to_string())?;
     inner.child = Some(child);
     inner.id = Some(id);
@@ -135,8 +153,12 @@ fn on_message(handle: &AppHandle, id: i64, msg: Msg) {
     }
     match msg {
         Msg::Loading => {}
-        Msg::Ready { device } => {
-            set_status(handle, &mut inner, Status { running: true, note: format!("Слухаю: {device}"), error: false })
+        Msg::Ready { device, mic, mic_error } => {
+            let pause = match (mic, mic_error) {
+                (Some(mic), _) => format!("пауза: {mic}"),
+                (None, e) => format!("перекладу в паузі не буде: {}", e.unwrap_or_default()),
+            };
+            set_status(handle, &mut inner, Status { running: true, note: format!("Слухаю: {device}; {pause}"), error: false })
         }
         Msg::Error { message } => set_status(handle, &mut inner, Status { running: true, note: message, error: true }),
         Msg::Partial { .. } => {
@@ -151,6 +173,15 @@ fn on_message(handle: &AppHandle, id: i64, msg: Msg) {
             }
             let _ = handle.emit("subtitle", &msg);
         }
+        Msg::Said { partial, at_ms, ref uk, ref en } => {
+            if !partial && !uk.is_empty() {
+                let line = Line { at_ms, speaker: "me".into(), original: uk.clone(), translation: en.clone() };
+                if let Err(e) = app.db().add_line(id, &line) {
+                    eprintln!("meeting line: {e}");
+                }
+            }
+            let _ = handle.emit("said", &msg);
+        }
     }
 }
 
@@ -161,6 +192,7 @@ fn exited(handle: &AppHandle, id: i64) {
     if inner.id != Some(id) {
         return;
     }
+    inner.stdin = None;
     let code = inner.child.take().and_then(|mut c| c.wait().ok()).and_then(|s| s.code());
     let _ = app.db().end_meeting(Some(id), &now());
     inner.id = None;
@@ -176,6 +208,7 @@ fn exited(handle: &AppHandle, id: i64) {
 pub fn stop(handle: &AppHandle) {
     let app = handle.state::<App>();
     let mut inner = app.meeting.lock();
+    inner.stdin = None;
     if let Some(mut child) = inner.child.take() {
         let _ = child.kill();
         let _ = child.wait();

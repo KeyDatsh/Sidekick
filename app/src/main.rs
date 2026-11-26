@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod db;
+mod gate;
 mod llm;
 mod meeting;
 mod window;
@@ -8,7 +9,10 @@ mod window;
 use std::{
     path::PathBuf,
     str::FromStr,
-    sync::{atomic::Ordering::Relaxed, Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicU64, Ordering::Relaxed},
+        Mutex, MutexGuard,
+    },
 };
 
 use chrono::{Local, NaiveDate};
@@ -17,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, State,
+    AppHandle, Emitter, Manager, State,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
@@ -29,6 +33,7 @@ pub struct App {
     hotkeys: Mutex<Option<Hotkeys>>,
     pub window: window::WindowState,
     pub meeting: meeting::MeetingState,
+    gate: gate::Gate,
     data_dir: PathBuf,
 }
 
@@ -43,6 +48,14 @@ impl App {
 struct Hotkeys {
     toggle: Shortcut,
     quick: Shortcut,
+    /// Held down: the call hears silence and the assistant translates what you say.
+    pause: Shortcut,
+}
+
+impl Hotkeys {
+    fn all(&self) -> [Shortcut; 3] {
+        [self.toggle, self.quick, self.pause]
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -53,6 +66,11 @@ struct Settings {
     opacity: u8,
     /// Folder with the speech models; empty means the default, see `models_dir`.
     models_dir: String,
+    pause_hotkey: String,
+    /// Part of the microphone's name; empty: the Windows default.
+    mic_device: String,
+    /// Part of the virtual cable's playback device name.
+    cable_device: String,
 }
 
 impl Settings {
@@ -64,14 +82,21 @@ impl Settings {
             quick_hotkey: get("quick_hotkey", "Ctrl+Alt+KeyV"),
             opacity: get("opacity", "62").parse().unwrap_or(62),
             models_dir: get("models_dir", ""),
+            pause_hotkey: get("pause_hotkey", "Ctrl+Alt+KeyP"),
+            mic_device: get("mic_device", ""),
+            cable_device: get("cable_device", "CABLE Input"),
         }
     }
 
     fn hotkeys(&self) -> Cmd<Hotkeys> {
         let parse = |s: &str| Shortcut::from_str(s).map_err(|_| format!("Незрозуміла комбінація: {s}"));
-        let keys = Hotkeys { toggle: parse(&self.toggle_hotkey)?, quick: parse(&self.quick_hotkey)? };
-        if keys.toggle == keys.quick {
-            return Err("Обидві дії мають однакову комбінацію".into());
+        let keys = Hotkeys {
+            toggle: parse(&self.toggle_hotkey)?,
+            quick: parse(&self.quick_hotkey)?,
+            pause: parse(&self.pause_hotkey)?,
+        };
+        if keys.toggle == keys.quick || keys.toggle == keys.pause || keys.quick == keys.pause {
+            return Err("Дві дії мають однакову комбінацію".into());
         }
         Ok(keys)
     }
@@ -109,6 +134,7 @@ struct Snapshot {
 #[derive(Serialize)]
 struct MeetingView {
     status: meeting::Status,
+    gate: gate::Status,
     /// Finished lines of the running meeting, for a page that was reloaded mid-meeting.
     lines: Vec<Line>,
     default_models_dir: String,
@@ -133,6 +159,7 @@ fn snapshot(app: State<App>, day: Option<String>) -> Cmd<Snapshot> {
         settings: Settings::load(&db),
         meeting: MeetingView {
             status,
+            gate: app.gate.status(),
             lines: match meeting_id {
                 Some(id) => db.lines(id, 50).map_err(err)?,
                 None => vec![],
@@ -284,7 +311,35 @@ fn models_dir(app: &App) -> PathBuf {
 
 #[tauri::command]
 fn start_meeting(handle: AppHandle, app: State<App>) -> Cmd<()> {
-    meeting::start(&handle, models_dir(&app), app.data_dir.join("speech.log"))
+    let mic = Settings::load(&app.db()).mic_device;
+    meeting::start(&handle, models_dir(&app), &mic, app.data_dir.join("speech.log"))
+}
+
+#[tauri::command]
+fn audio_devices() -> gate::Devices {
+    gate::devices()
+}
+
+/// Counts pause presses, so the safety release below only undoes its own press.
+static PRESSES: AtomicU64 = AtomicU64::new(0);
+
+/// The pause key went down or up.
+fn pause(handle: &AppHandle, held: bool) {
+    let app = handle.state::<App>();
+    app.gate.hold(held);
+    let meeting = app.meeting.pause(held);
+    let _ = handle.emit("pause", serde_json::json!({ "held": held, "meeting": meeting }));
+    let press = PRESSES.fetch_add(1, Relaxed) + 1;
+    if held {
+        // If the key-up is ever lost, the call must not stay muted.
+        let handle = handle.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            if PRESSES.load(Relaxed) == press {
+                pause(&handle, false);
+            }
+        });
+    }
 }
 
 #[tauri::command]
@@ -331,6 +386,16 @@ fn save_settings(handle: AppHandle, app: State<App>, settings: Settings) -> Cmd<
     db.set_setting("toggle_hotkey", &settings.toggle_hotkey).map_err(err)?;
     db.set_setting("quick_hotkey", &settings.quick_hotkey).map_err(err)?;
     db.set_setting("models_dir", settings.models_dir.trim()).map_err(err)?;
+    db.set_setting("pause_hotkey", &settings.pause_hotkey).map_err(err)?;
+    let old = Settings::load(&db);
+    let (mic, cable) = (settings.mic_device.trim(), settings.cable_device.trim());
+    db.set_setting("mic_device", mic).map_err(err)?;
+    db.set_setting("cable_device", cable).map_err(err)?;
+    drop(db);
+    if old.mic_device != mic || old.cable_device != cable || !app.gate.status().on {
+        app.gate.start(cable, mic);
+    }
+    let db = app.db();
     db.set_setting("opacity", &settings.opacity.clamp(20, 100).to_string()).map_err(err)
 }
 
@@ -344,7 +409,7 @@ fn set_hotkeys(handle: &AppHandle, new: Hotkeys) -> Cmd<()> {
     let shortcuts = handle.global_shortcut();
     let _ = shortcuts.unregister_all();
     let register = |k: &Hotkeys| -> Cmd<()> {
-        for key in [k.toggle, k.quick] {
+        for key in k.all() {
             shortcuts
                 .register(key)
                 .map_err(|_| format!("Комбінацію {key} вже зайняла інша програма"))?;
@@ -374,9 +439,15 @@ fn quit(handle: AppHandle) {
     handle.exit(0);
 }
 
-fn on_hotkey(handle: &AppHandle, pressed: &Shortcut) {
-    let state = handle.state::<App>();
-    let keys = *state.hotkeys.lock().unwrap_or_else(|e| e.into_inner());
+fn on_hotkey(handle: &AppHandle, pressed: &Shortcut, state: ShortcutState) {
+    let app = handle.state::<App>();
+    let keys = *app.hotkeys.lock().unwrap_or_else(|e| e.into_inner());
+    if keys.is_some_and(|k| k.pause == *pressed) {
+        return pause(handle, state == ShortcutState::Pressed);
+    }
+    if state != ShortcutState::Pressed {
+        return;
+    }
     match keys {
         Some(k) if k.quick == *pressed => window::set_active(handle, true, Some("quick")),
         Some(k) if k.toggle == *pressed => window::set_active(handle, !window::is_active(handle), None),
@@ -425,17 +496,13 @@ fn main() {
         }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|handle, shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        on_hotkey(handle, shortcut);
-                    }
-                })
+                .with_handler(|handle, shortcut, event| on_hotkey(handle, shortcut, event.state()))
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
             snapshot, plan_seen, add_project, archive_project, add_task, update_task, move_task, set_done,
             set_started, delete_task, clipboard_draft, copy_text, report, generate_report, save_memo,
-            save_minutes, has_api_key, set_api_key, save_settings, start_meeting, stop_meeting, deactivate, quit
+            save_minutes, has_api_key, set_api_key, save_settings, start_meeting, stop_meeting, audio_devices, deactivate, quit
         ])
         .setup(|app| {
             let handle = app.handle();
@@ -449,8 +516,12 @@ fn main() {
                 hotkeys: Mutex::new(None),
                 window: Default::default(),
                 meeting: Default::default(),
+                gate: Default::default(),
                 data_dir,
             });
+            // The call's microphone goes through the gate from the start, meeting or not.
+            let gate = handle.state::<App>().gate.start(&settings.cable_device, &settings.mic_device);
+            eprintln!("gate: {}", gate.note);
             window::create(handle)?;
             create_tray(handle)?;
             if let Err(e) = settings.hotkeys().and_then(|k| set_hotkeys(handle, k)) {
