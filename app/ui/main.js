@@ -83,6 +83,13 @@ const carried = (t) => {
   return t.carried_from === addDays(ui.snap.today, -1) ? 'з учора' : `з ${dayShort(t.carried_from)}`;
 };
 const hotkeyLabel = (s) => s.replace(/Key|Digit/g, '').replaceAll('+', ' + ');
+// plural(3, 'запит', 'запити', 'запитів') → '3 запити'
+const plural = (n, one, few, many) => {
+  const d = n % 10, dd = n % 100;
+  const word = d === 1 && dd !== 11 ? one : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? few : many;
+  return `${n} ${word}`;
+};
+const duration = (m) => (m < 60 ? `${m} хв` : `${String(Math.round(m / 6) / 10).replace('.', ',')} год`);
 
 // Data and drawing
 
@@ -351,24 +358,62 @@ const views = {
     const generate = h('button', {}, 'Скласти');
     const copyAll = h('button.primary', {}, 'Копіювати все');
     let rows = [];
+    let unassigned = [];
     const hours = (m) => `${String(m / 60).replace('.', ',')} год`;
     const sum = () => (total.textContent = `Разом ${hours(rows.reduce((a, r) => a + r.minutes, 0))}`);
+    const load = (report) => { rows = report.rows; unassigned = report.unassigned; paint(); };
     const paint = () => {
       sum();
       generate.textContent = rows.some((r) => r.memo) ? 'Перегенерувати' : 'Скласти';
       generate.disabled = copyAll.disabled = !rows.length;
-      body.replaceChildren(...(rows.length ? rows.map(card) : [h('span.muted', {}, 'Немає закритих чи розпочатих задач.')]));
+      const empty = !rows.length && !unassigned.length;
+      body.replaceChildren(
+        ...rows.map(card),
+        empty && h('span.muted', {}, 'Ні закритих чи розпочатих задач, ні роботи в Claude Code чи комітів.'),
+        unassigned.length > 0 && h('span.muted', {}, 'Папки без проєкту: обери, куди їх зараховувати. Вибір запам\'ятовується.'),
+        ...unassigned.map(folderCard));
+    };
+    // Work done in the project's folders: Claude Code requests, active time, commits.
+    const workLine = (work) => {
+      const requests = work.reduce((a, f) => a + f.requests.length, 0);
+      const commits = work.reduce((a, f) => a + f.commits.length, 0);
+      const active = work.reduce((a, f) => a + f.active_minutes, 0);
+      const parts = [];
+      if (requests) parts.push(`Claude Code: ${plural(requests, 'запит', 'запити', 'запитів')}${active ? `, ~${duration(active)}` : ''}`);
+      if (commits) parts.push(plural(commits, 'коміт', 'коміти', 'комітів'));
+      return parts.join(' · ');
+    };
+    const folderCard = (f) => {
+      const pick = h('select', {
+        style: 'width:auto',
+        onchange: async (e) => {
+          const v = e.target.value;
+          await call('assign_folder', { path: f.path, project: v === 'skip' ? null : Number(v) }).catch(console.error);
+          call('report', { day }).then(load).catch(console.error);
+        },
+      }, h('option', { disabled: true, selected: true }, 'Проєкт…'),
+      ui.snap.projects.map((p) => h('option', { value: p.id }, projectLabel(p.id))),
+      h('option', { value: 'skip' }, 'Не враховувати'));
+      return h('div.card', {},
+        h('div.row', {}, h('b.grow.clip', { title: f.path }, f.path.split(/[\\/]/).pop()), pick),
+        h('div.row', {}, h('span.dim.grow.clip', { title: f.path }, workLine([f]))),
+        f.requests.length > 0 && h('span.dim.clip', { title: f.requests.join('\n') }, f.requests.at(-1)));
     };
     const card = (r) => {
       const time = h('span.hours', {}, hours(r.minutes));
-      const step = (by) => async () => {
-        r.minutes = Math.max(0, Math.min(1440, r.minutes + by));
+      const set = async (minutes) => {
+        r.minutes = Math.max(0, Math.min(1440, minutes));
         time.textContent = hours(r.minutes);
         sum();
         await call('save_minutes', { day, project: r.project_id, minutes: r.minutes }).catch(console.error);
       };
+      const step = (by) => () => set(r.minutes + by);
+      const active = r.work.reduce((a, f) => a + f.active_minutes, 0);
+      // Claude Code time as a starting point, rounded to the same half hours as the buttons.
+      const guess = active && Math.max(30, Math.round(active / 30) * 30);
+      const done = [...r.tasks.map((t) => t.title), ...r.work.flatMap((f) => f.commits)];
       const count = h('span.dim');
-      const memo = h('textarea', { value: r.memo, rows: 2, lang: 'en', placeholder: r.tasks.map((t) => t.title).join('; ') });
+      const memo = h('textarea', { value: r.memo, rows: 2, lang: 'en', placeholder: done.join('; ') });
       const counter = () => {
         const n = [...memo.value].length;
         count.textContent = `${n} / 140`;
@@ -382,7 +427,9 @@ const views = {
           h('button.step', { onclick: step(-30), ariaLabel: 'Менше часу' }, '−'), time,
           h('button.step', { onclick: step(30), ariaLabel: 'Більше часу' }, '+'),
           h('button', { onclick: () => copy(memo.value) }, 'Копіювати')),
-        memo, h('div.row', {}, h('span.dim.grow.clip', {}, r.tasks.map((t) => t.title).join(' · ')), count));
+        memo, h('div.row', {}, h('span.dim.grow.clip', { title: done.join('\n') }, done.join(' · ')), count),
+        r.work.length > 0 && h('div.row', {}, h('span.dim.grow.clip', { title: r.work.map((f) => f.path).join('\n') }, workLine(r.work)),
+          guess > 0 && r.minutes !== guess && h('button.ghost', { style: 'padding:1px 6px;font-size:11px', title: 'Взяти час із Claude Code', onclick: () => set(guess) }, `→ ${hours(guess)}`)));
     };
     const copy = async (text) => {
       if (!text) return toast('Запис порожній');
@@ -394,14 +441,15 @@ const views = {
       generate.textContent = 'Складаю…';
       try {
         const result = await call('generate_report', { day });
-        rows = result.rows;
-        if (!result.by_claude) toast('Ключа Claude API немає: записи складено з назв задач. Ключ додається в налаштуваннях.', true);
+        rows = result.report.rows;
+        unassigned = result.report.unassigned;
+        if (!result.by_claude) toast('Ключа Claude API немає: записи складено з назв задач і комітів. Ключ додається в налаштуваннях.', true);
       } catch (e) {
         console.error(e);
       }
       paint();
     };
-    call('report', { day }).then((r) => { rows = r; paint(); }).catch(console.error);
+    call('report', { day }).then(load).catch(console.error);
     const shift = (n) => () => { ui.reportDay = addDays(day, n); draw(); };
     return [
       header(),

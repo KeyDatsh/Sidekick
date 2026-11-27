@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS meeting_lines (
     translation TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS meeting_lines_meeting ON meeting_lines (meeting_id, at_ms);
+CREATE TABLE IF NOT EXISTS folders (
+    path TEXT PRIMARY KEY,         -- work in it and its subfolders goes to the project
+    project_id INTEGER             -- NULL: not client work, left out of the report
+);
 ";
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -106,6 +110,8 @@ pub struct ReportRow {
     pub minutes: i64,
     pub memo: String,
     pub tasks: Vec<Task>,
+    /// Claude Code requests and commits in the project's folders.
+    pub work: Vec<crate::work::Folder>,
 }
 
 pub fn iso(day: NaiveDate) -> String {
@@ -289,7 +295,24 @@ impl Db {
         Ok(rows)
     }
 
-    fn report_row(&self, day: &str, project_id: i64) -> Res<ReportRow> {
+    /// Folder -> project, None for folders left out of the report.
+    pub fn folders(&self) -> Res<Vec<(String, Option<i64>)>> {
+        let mut q = self.0.prepare("SELECT path, project_id FROM folders")?;
+        let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect();
+        rows
+    }
+
+    pub fn set_folder(&self, path: &str, project_id: Option<i64>) -> Res<()> {
+        self.0.execute(
+            "INSERT INTO folders (path, project_id) VALUES (?1, ?2)
+             ON CONFLICT (path) DO UPDATE SET project_id = excluded.project_id",
+            params![path, project_id],
+        )?;
+        Ok(())
+    }
+
+    /// The report row of a project, without its tasks.
+    pub fn report_row(&self, day: &str, project_id: i64) -> Res<ReportRow> {
         let label = self
             .0
             .query_row("SELECT id, client, name FROM projects WHERE id = ?1", [project_id], project)
@@ -304,7 +327,7 @@ impl Db {
             )
             .optional()?
             .unwrap_or_default();
-        Ok(ReportRow { project_id, label, minutes, memo, tasks: vec![] })
+        Ok(ReportRow { project_id, label, minutes, memo, tasks: vec![], work: vec![] })
     }
 
     pub fn save_memo(&self, day: &str, project_id: i64, memo: &str) -> Res<()> {

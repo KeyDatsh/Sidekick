@@ -6,6 +6,7 @@ mod guard;
 mod llm;
 mod meeting;
 mod window;
+mod work;
 
 use std::{
     path::PathBuf,
@@ -253,38 +254,87 @@ fn copy_text(text: String) -> Cmd<()> {
 
 // Report
 
+#[derive(Serialize)]
+struct Report {
+    rows: Vec<ReportRow>,
+    /// Folders with work on that day that are not linked to a project yet.
+    unassigned: Vec<work::Folder>,
+}
+
+/// Tasks from the database plus Claude Code sessions and commits, grouped by project.
+fn build_report(app: &App, day: &str) -> Cmd<Report> {
+    let date: NaiveDate = day.parse().map_err(|_| format!("Невірна дата: {day}"))?;
+    let (mut rows, folders) = {
+        let db = app.db();
+        (db.report(day, &iso(today())).map_err(err)?, db.folders().map_err(err)?)
+    };
+    // Linked repositories are checked for commits even on days without a Claude Code session.
+    let repos: Vec<String> = folders.iter().filter(|(_, p)| p.is_some()).map(|(f, _)| f.clone()).collect();
+    // Reading sessions and running git takes a while: not under the database lock.
+    let work = work::day(date, &repos);
+    let mut unassigned = vec![];
+    for folder in work {
+        // Exact match only: work in a repository's subfolders already comes under its root, and a link
+        // on a parent folder (say, the home folder) must not swallow every project inside it.
+        let link = folders.iter().find(|(f, _)| work::key(f) == work::key(&folder.path));
+        match link {
+            None => unassigned.push(folder),
+            Some((_, None)) => {}
+            Some((_, Some(project))) => match rows.iter_mut().find(|r| r.project_id == *project) {
+                Some(row) => row.work.push(folder),
+                None => {
+                    let mut row = app.db().report_row(day, *project).map_err(err)?;
+                    row.work.push(folder);
+                    rows.push(row);
+                }
+            },
+        }
+    }
+    Ok(Report { rows, unassigned })
+}
+
+/// `(async)`: reading the sessions must not block the window.
+#[tauri::command(async)]
+fn report(app: State<App>, day: String) -> Cmd<Report> {
+    build_report(&app, &day)
+}
+
+/// `project`: None leaves the folder out of reports.
 #[tauri::command]
-fn report(app: State<App>, day: String) -> Cmd<Vec<ReportRow>> {
-    valid_day(&day)?;
-    app.db().report(&day, &iso(today())).map_err(err)
+fn assign_folder(app: State<App>, path: String, project: Option<i64>) -> Cmd<()> {
+    if path.trim().is_empty() {
+        return Err("Порожній шлях".into());
+    }
+    app.db().set_folder(path.trim(), project).map_err(err)
 }
 
 #[derive(Serialize)]
 struct Generated {
-    rows: Vec<ReportRow>,
-    /// False: no API key, the memos are just task titles.
+    report: Report,
+    /// False: no API key, the memos are just task titles and commits.
     by_claude: bool,
 }
 
 /// `(async)`: the network call must not block the window.
 #[tauri::command(async)]
 fn generate_report(app: State<App>, day: String) -> Cmd<Generated> {
-    valid_day(&day)?;
-    let today = iso(today());
-    let rows = app.db().report(&day, &today).map_err(err)?;
-    if rows.is_empty() {
-        return Err("За цей день немає закритих чи розпочатих задач".into());
+    let mut report = build_report(&app, &day)?;
+    if report.rows.is_empty() {
+        return Err("За цей день немає ні задач, ні роботи в прив'язаних папках".into());
     }
     let key = api_key();
     let memos = match &key {
-        Some(key) => llm::draft(key, &rows)?,
-        None => llm::draft_offline(&rows),
+        Some(key) => llm::draft(key, &report.rows)?,
+        None => llm::draft_offline(&report.rows),
     };
     let db = app.db();
-    for (project_id, memo) in &memos {
-        db.save_memo(&day, *project_id, memo).map_err(err)?;
+    for row in &mut report.rows {
+        if let Some(memo) = memos.get(&row.project_id) {
+            db.save_memo(&day, row.project_id, memo).map_err(err)?;
+            row.memo = memo.clone();
+        }
     }
-    Ok(Generated { rows: db.report(&day, &today).map_err(err)?, by_claude: key.is_some() })
+    Ok(Generated { report, by_claude: key.is_some() })
 }
 
 #[tauri::command]
@@ -506,7 +556,7 @@ fn main() {
         )
         .invoke_handler(tauri::generate_handler![
             snapshot, plan_seen, add_project, archive_project, add_task, update_task, move_task, set_done,
-            set_started, delete_task, clipboard_draft, copy_text, report, generate_report, save_memo,
+            set_started, delete_task, clipboard_draft, copy_text, report, assign_folder, generate_report, save_memo,
             save_minutes, has_api_key, set_api_key, save_settings, start_meeting, stop_meeting, audio_devices, deactivate, quit
         ])
         .setup(|app| {
