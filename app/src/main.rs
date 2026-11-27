@@ -2,6 +2,7 @@
 
 mod db;
 mod gate;
+mod guard;
 mod llm;
 mod meeting;
 mod window;
@@ -490,6 +491,10 @@ fn data_dir(handle: &AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
 }
 
 fn main() {
+    if !std::env::args().any(|a| a == guard::APP_FLAG) && guard::run() {
+        return;
+    }
+    guard::log_panics();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|handle, _, _| {
             window::set_active(handle, true, None);
